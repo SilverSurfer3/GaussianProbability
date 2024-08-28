@@ -1,0 +1,65 @@
+import GPy
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import norm
+
+# Historical sports scores data
+data = np.array([5,2,3,3,3,5,5,5,1,5,2,4,5,3,4,2,0,2,5,5,5,5,3,5])
+
+# Generate time indices
+X = np.arange(len(data)).reshape(-1, 1)
+Y = data.reshape(-1, 1)
+
+# Split the data into training and testing sets
+train_size = int(0.8 * len(data))
+X_train, X_test = X[:train_size], X[train_size:]
+Y_train, Y_test = Y[:train_size], Y[train_size:]
+
+# Create and optimize a GP regression model
+kernel = GPy.kern.RBF(input_dim=1, variance=1., lengthscale=10.)
+gp_model = GPy.models.GPRegression(X_train, Y_train, kernel)
+gp_model.optimize(messages=True)
+
+# Make predictions
+mu, cov = gp_model.predict(X_test)
+predictions = mu.flatten()
+std_devs = np.sqrt(np.diag(cov))
+
+# Predict one day into the future
+future_X = np.array([[len(data)]])
+future_mu, future_cov = gp_model.predict(future_X)
+future_prediction = future_mu.flatten()[0]
+future_std_dev = np.sqrt(future_cov.flatten()[0])
+
+# Print predictions and standard deviations (as an indication of uncertainty)
+print("GP Regression Predictions for test data:", predictions)
+print("Standard deviations for test data predictions:", std_devs)
+print("GP Regression Prediction for one day into the future:", future_prediction)
+print("Standard deviation for future prediction:", future_std_dev)
+
+# Calculate the probabilities for multiple thresholds
+thresholds = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5]
+probabilities = [100 * (1 - norm.cdf(t, loc=future_prediction, scale=future_std_dev)) for t in thresholds]
+
+# Print probabilities for each threshold
+for t, p in zip(thresholds, probabilities):
+    print(f"Probability of future score being above {t}: {p:.2f}%")
+
+# Plot the results
+plt.figure(figsize=(12, 6))
+plt.plot(X, Y, 'kx', label='Original Data')
+plt.plot(X_train, Y_train, 'bo', label='Training Data')
+plt.plot(X_test, Y_test, 'go', label='Test Data')
+plt.plot(X_test, predictions, 'r-', label='Predictions')
+plt.fill_between(X_test.flatten(),
+                 (mu - 1.96 * np.sqrt(np.diag(cov))).flatten(),
+                 (mu + 1.96 * np.sqrt(np.diag(cov))).flatten(),
+                 color='pink', alpha=0.5, label='95% Confidence Interval')
+plt.axvline(x=len(data), linestyle='--', color='gray', label='Future Prediction')
+plt.scatter(future_X, future_prediction, color='red', label='Future Prediction')
+plt.legend()
+plt.title('GP Regression Sports Scores Forecasting with Probability')
+plt.xlabel('Time')
+plt.ylabel('Scores')
+plt.show()
+
